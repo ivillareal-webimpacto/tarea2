@@ -16,8 +16,8 @@ if (!defined('_PS_VERSION_')) {
 class Tarea2 extends Module
 {
     public $hooks = array();
-
-
+    
+    
     //////////////////////////////////////
     //construct
     /////////////////////////////////////
@@ -133,9 +133,9 @@ class Tarea2 extends Module
 
         //Introducimos en ps_product
         $sql = 'INSERT INTO '._DB_PREFIX_.'product 
-        (id_manufacturer,id_tax_rules_group,reference,ean13,wholesale_price,price,quantity)
+        (id_manufacturer,id_tax_rules_group,reference,ean13,wholesale_price,price)
          VALUES ("'.$id_manufacturer.'","'.$id_tax_rules_group.'","'.$campos[1].'",
-         "'.$campos[2].'","'.$campos[3].'","'.$campos[4].'","'.$campos[6].'")';
+         "'.$campos[2].'","'.$campos[3].'","'.$campos[4].'")';
         Db::getInstance()->execute($sql);
         $idProduct= Db::getInstance()->Insert_ID();
 
@@ -149,6 +149,13 @@ class Tarea2 extends Module
         (id_product,id_shop,id_tax_rules_group,wholesale_price,price,active)
          VALUES ("'.$idProduct.'","1","'.$id_tax_rules_group.'",
          "'.$campos[3].'","'.$campos[4].'","1")';
+        Db::getInstance()->execute($sql);
+
+        //Introducimos en ps_stock_available la cantidad
+        $sql = 'INSERT INTO '._DB_PREFIX_.'stock_available 
+        (id_product,id_shop,quantity,physical_quantity)
+         VALUES ("'.$idProduct.'","1","'.$campos[6].'",
+         "'.$campos[6].'")';
         Db::getInstance()->execute($sql);
 
         //Consultamos la categoria sino existe la creamos
@@ -181,8 +188,18 @@ class Tarea2 extends Module
             //vamos a meter cada categoria con su producto
             if (($row = Db::getInstance()->getRow('SELECT * FROM '._DB_PREFIX_.'category_product
                             WHERE id_product = "'.$idProduct.'" AND id_category="'.$id_category.'" ')) == 0) {
+                $position=0;
+                //sacamos la posicion max de cada categoria
+                if (($row = Db::getInstance()->getRow('SELECT max(position) as maximo FROM
+                            '._DB_PREFIX_.'category_product WHERE id_category = "'.$id_category.'"')) != 0) {
+                    $position = $row['maximo'];
+                    $position++;
+                } else {
+                    $position=1;
+                }
+
                 $sql = 'INSERT INTO '._DB_PREFIX_.'category_product (id_category,id_product,position)
-                VALUES ("'.$id_category.'","'.$idProduct.'","'.$key.'")';
+                VALUES ("'.$id_category.'","'.$idProduct.'","'.$position.'")';
                 Db::getInstance()->execute($sql);
             }
         }
@@ -204,7 +221,7 @@ class Tarea2 extends Module
     private function displayForm()
     {
         $this->_html .='';
-
+                       
         //IMPORTAR
         $this->_html .= '<form method="post" action="'.$_SERVER['REQUEST_URI'].'" enctype="multipart/form-data">
 			<fieldset>
