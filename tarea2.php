@@ -16,8 +16,8 @@ if (!defined('_PS_VERSION_')) {
 class Tarea2 extends Module
 {
     public $hooks = array();
-    
-    
+
+
     //////////////////////////////////////
     //construct
     /////////////////////////////////////
@@ -56,20 +56,11 @@ class Tarea2 extends Module
                 if ($file_content = Tools::file_get_contents($_FILES["archivocsimp_apad"]["tmp_name"])) {
                     $separator = chr(10);
                     $lines = explode($separator, $file_content);
-                    $fila="";
                     foreach ($lines as $key => $line) {
-                        $dat = explode(";", $line);
-
-                        if (empty($dat[0]) && !isset($lines[$key+1])) {
-                            continue;
-                        }
                         if ($key != 0) {
-                            foreach ($dat as $key => $dato) {
-                                $fila.=$dato;
-                                $fila.= ' ';
+                            if (!empty($line)) {
+                                $this->importProducts2($line);
                             }
-                            $this->importProducts($fila);
-                            $fila = "";
                         }
                     }
                 } else {
@@ -82,24 +73,13 @@ class Tarea2 extends Module
         return $this->_html;
     }
 
-    private function importProducts($fila)
+    private function importProducts2($line)
     {
-        $campos = explode(",", $fila);
-        //tabla ps_product
-        //$campos[1] REFERENCE;
-        //$campos[2] EAN13;
-        //$campos[3] WHOLESALE_PRICE;
-        //$campos[4] PRICE;
-        //$campos[6] Quantity;
-        //tabla ps_product_lang
-        //$campos[0] NOMBRE;
-        //tabla ps_manufacturer
-        //$campos[8] MARCA
-        //tabla ps_category
-        //$campos[7] CATEGORIA
+        $campos = explode(",", $line);
+        $marca = addslashes(utf8_encode(trim($campos[8])));
+        $marca = str_replace(";", "", $marca);
 
         //Consultamos la marca sino existe la añadimos
-        $marca = addslashes(utf8_encode(trim($campos[8])));
         if (($row = Db::getInstance()->getRow('SELECT * FROM '._DB_PREFIX_.'manufacturer
                             WHERE name = "'.$marca.'"')) == 0) {
             //creamos la marca
@@ -116,25 +96,6 @@ class Tarea2 extends Module
             Db::getInstance()->execute($sql);
         } else {
             $id_manufacturer=$row['id_manufacturer'];
-        }
-
-        //Consultamos la categoria sino existe la creamos
-        $categoria = addslashes(utf8_encode(trim($campos[7])));
-        if (($row = Db::getInstance()->getRow('SELECT * FROM '._DB_PREFIX_.'category_lang
-                            WHERE name = "'.$categoria.'"')) == 0) {
-            //creamos la categoria
-            $sql = 'INSERT INTO '._DB_PREFIX_.'category (active) VALUES ("1")';
-            Db::getInstance()->execute($sql);
-            $id_category = Db::getInstance()->Insert_ID();
-
-            $sql = 'INSERT INTO '._DB_PREFIX_.'category_lang (id_category,id_shop,id_lang,name) 
-            VALUES ("'.$id_category.'", "1", "1","'.$categoria.'")';
-            Db::getInstance()->execute($sql);
-
-            $sql = 'INSERT INTO '._DB_PREFIX_.'category_shop (id_category,id_shop) VALUES ("'.$id_category.'", "1")';
-            Db::getInstance()->execute($sql);
-        } else {
-            $id_category=$row['id_category'];
         }
 
         //sacamos el iva
@@ -154,16 +115,26 @@ class Tarea2 extends Module
             Db::getInstance()->execute($sql);
             $id_tax = Db::getInstance()->Insert_ID();
 
+            $name_iva = $iva.' %';
+            //creamos la tax en ps_tax_lang
+            $sql = 'INSERT INTO '._DB_PREFIX_.'tax_lang (id_tax, id_lang, name) 
+            VALUES ("'.$id_tax.'","1","'.$name_iva.'")';
+            Db::getInstance()->execute($sql);
+
             //creamos la ps_tax_rule
             $sql = 'INSERT INTO '._DB_PREFIX_.'tax_rule (id_tax_rules_group,id_tax,id_country)
              VALUES ("'.$id_tax_rules_group.'","'.$id_tax.'","6")';
             Db::getInstance()->execute($sql);
         }
 
+
+        $categoria = addslashes(utf8_encode(trim($campos[7])));
+        $categorias = explode(";", $categoria);
+
         //Introducimos en ps_product
         $sql = 'INSERT INTO '._DB_PREFIX_.'product 
-        (id_manufacturer,id_category_default,id_tax_rules_group,reference,ean13,wholesale_price,price,quantity)
-         VALUES ("'.$id_manufacturer.'","'.$id_category.'","'.$id_tax_rules_group.'","'.$campos[1].'",
+        (id_manufacturer,id_tax_rules_group,reference,ean13,wholesale_price,price,quantity)
+         VALUES ("'.$id_manufacturer.'","'.$id_tax_rules_group.'","'.$campos[1].'",
          "'.$campos[2].'","'.$campos[3].'","'.$campos[4].'","'.$campos[6].'")';
         Db::getInstance()->execute($sql);
         $idProduct= Db::getInstance()->Insert_ID();
@@ -173,10 +144,59 @@ class Tarea2 extends Module
         VALUES ("'.$idProduct.'","1","1","'.$campos[0].'")';
         Db::getInstance()->execute($sql);
 
-        $sql = 'INSERT INTO '._DB_PREFIX_.'category_product (id_category,id_product)
-         VALUES ("'.$id_category.'","'.$idProduct.'")';
+        //Introducimos en ps_product_shop
+        $sql = 'INSERT INTO '._DB_PREFIX_.'product_shop 
+        (id_product,id_shop,id_tax_rules_group,wholesale_price,price,active)
+         VALUES ("'.$idProduct.'","1","'.$id_tax_rules_group.'",
+         "'.$campos[3].'","'.$campos[4].'","1")';
+        Db::getInstance()->execute($sql);
+
+        //Consultamos la categoria sino existe la creamos
+        $categoria_default = "";
+        foreach ($categorias as $key => $line) {
+            $cat = "";
+            $cat = addslashes(utf8_encode(trim($line)));
+            if (($row = Db::getInstance()->getRow('SELECT * FROM '._DB_PREFIX_.'category_lang
+                            WHERE name = "'.$cat.'"')) == 0) {
+                //creamos la categoria
+                $sql = 'INSERT INTO '._DB_PREFIX_.'category (active) VALUES ("1")';
+                Db::getInstance()->execute($sql);
+                $id_category = Db::getInstance()->Insert_ID();
+
+                $sql = 'INSERT INTO '._DB_PREFIX_.'category_lang (id_category,id_shop,id_lang,name) 
+                VALUES ("'.$id_category.'", "1", "1","'.$cat.'")';
+                Db::getInstance()->execute($sql);
+
+                $sql = 'INSERT INTO '._DB_PREFIX_.'category_shop (id_category,id_shop) 
+                VALUES ("'.$id_category.'", "1")';
+                Db::getInstance()->execute($sql);
+            } else {
+                $id_category = $row['id_category'];
+            }
+
+            if ($key == 0) {
+                $categoria_default = $id_category;
+            }
+
+            //vamos a meter cada categoria con su producto
+            if (($row = Db::getInstance()->getRow('SELECT * FROM '._DB_PREFIX_.'category_product
+                            WHERE id_product = "'.$idProduct.'" AND id_category="'.$id_category.'" ')) == 0) {
+                $sql = 'INSERT INTO '._DB_PREFIX_.'category_product (id_category,id_product,position)
+                VALUES ("'.$id_category.'","'.$idProduct.'","'.$key.'")';
+                Db::getInstance()->execute($sql);
+            }
+        }
+
+        //actualizamos con la categoria por defecto en ps_product y en ps_product_shop
+        $sql = 'UPDATE '._DB_PREFIX_.'product SET id_category_default = "'.$categoria_default .'"
+         WHERE id_product = "'.$idProduct.'"';
+        Db::getInstance()->execute($sql);
+
+        $sql = 'UPDATE '._DB_PREFIX_.'product_shop SET id_category_default = "'.$categoria_default .'"
+         WHERE id_product = "'.$idProduct.'"';
         Db::getInstance()->execute($sql);
     }
+
 
     //////////////////////////////////////
     //Admin form
@@ -184,7 +204,7 @@ class Tarea2 extends Module
     private function displayForm()
     {
         $this->_html .='';
-                       
+
         //IMPORTAR
         $this->_html .= '<form method="post" action="'.$_SERVER['REQUEST_URI'].'" enctype="multipart/form-data">
 			<fieldset>
@@ -215,11 +235,4 @@ class Tarea2 extends Module
     {
         return preg_replace("/[^a-zA-Z0-9]/", "", $string);
     }
-}
-
-function console_log($data)
-{
-    echo '<script>';
-    echo 'console.log('. json_encode($data) .')';
-    echo '</script>';
 }
